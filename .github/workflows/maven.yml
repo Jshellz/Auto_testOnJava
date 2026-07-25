@@ -1,4 +1,4 @@
-name: Java Maven Tests
+name: Java Maven Tests with Allure
 
 on:
   push:
@@ -6,18 +6,27 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  JAVA_VERSION: '11'
+  MAVEN_VERSION: '3.9.5'
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+      fail-fast: false
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
           cache: maven
 
@@ -29,21 +38,64 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Install Playwright browsers
-        run: mvn exec:java -Dexec.mainClass="com.microsoft.playwright.CLI" -Dexec.args="install --with-deps"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgbm1 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libatspi2.0-0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxrandr2 \
+            libxshmfence1 \
+            libxss1 \
+            libxtst6 \
+            xvfb
 
-      - name: Build and Test
-        run: mvn clean test
+      - name: Install Playwright browsers
+        run: |
+          mvn exec:java -Dexec.mainClass="com.microsoft.playwright.CLI" \
+            -Dexec.args="install --with-deps"
+
+      - name: Run tests
+        run: mvn clean test -Dbrowser=${{ matrix.browser }}
         env:
+          BROWSER: ${{ matrix.browser }}
+          HEADLESS: true
+          BASE_URL: https://example.com
           CI: true
 
-      - name: Upload test results
+      - name: Generate Allure Report
+        if: always()
+        uses: simple-elf/allure-report-action@master
+        with:
+          allure_results: target/allure-results
+          gh_pages: gh-pages
+          allure_report: allure-report
+          allure_history: allure-history
+
+      - name: Upload Allure results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: allure-results-${{ matrix.browser }}
+          path: target/allure-results/
+          retention-days: 7
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.browser }}
           path: target/surefire-reports/
           retention-days: 7
 
-          path: target/site/
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.browser }}
+          path: target/screenshots/
           retention-days: 7
