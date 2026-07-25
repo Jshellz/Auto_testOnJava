@@ -45,10 +45,5 @@ jobs:
           path: target/surefire-reports/
           retention-days: 7
 
-      - name: Upload HTML reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: html-reports
           path: target/site/
           retention-days: 7
